@@ -1,36 +1,24 @@
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import Flask, render_template, request, redirect, session
 import razorpay
+import os
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+app.secret_key = "your_secret_key"  # Change this to something secure
 
-# Setup Razorpay client
+# Razorpay client (replace with your keys)
 razorpay_client = razorpay.Client(auth=("YOUR_RAZORPAY_KEY_ID", "YOUR_RAZORPAY_SECRET"))
 
-# Dummy catalog
-PRODUCTS = [
-    {
-        'id': 1,
-        'name': 'STRYDAIR Tee Front',
-        'price': 999,
-        'img': 'static/images/28107A3A-3E7E-43BD-9125-0D1F0D7A4184.jpeg'
-    },
-    {
-        'id': 2,
-        'name': 'STRYDAIR Tee Back',
-        'price': 999,
-        'img': 'static/images/back.jpeg'
-    }
-]
+ADMIN_EMAIL = "arnavreddy2402@gmail.com"
+users = {}  # Simple in-memory storage (for demo)
 
+# ---------------- ROUTES ----------------
 @app.route('/')
 def home():
-    return render_template("home.html", logo_url=url_for('static', filename='images/Strydair.jpeg'))
+    return render_template("home.html")
 
 @app.route('/shop')
 def shop():
-    cart = session.get('cart', [])
-    return render_template("shop.html", products=PRODUCTS, cart=cart)
+    return render_template("shop.html")
 
 @app.route('/about')
 def about():
@@ -40,37 +28,40 @@ def about():
 def contact():
     return render_template("contact.html")
 
-@app.route('/faq')
-def faq():
-    return render_template("faq.html")
+@app.route('/login', methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+        if email in users and users[email]["password"] == password:
+            session["user"] = email
+            return redirect("/admin" if email == ADMIN_EMAIL else "/")
+        return "Invalid login"
+    return render_template("login.html")
 
-@app.route('/add_to_cart/<int:pid>')
-def add_to_cart(pid):
-    cart = session.get('cart', [])
-    product = next((p for p in PRODUCTS if p['id'] == pid), None)
-    if product:
-        cart.append(product)
-        session['cart'] = cart
-    return redirect(url_for('shop'))
+@app.route('/register', methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+        users[email] = {"password": password}
+        return redirect("/login")
+    return render_template("register.html")
 
-@app.route('/cart')
-def cart():
-    cart = session.get('cart', [])
-    total = sum(item['price'] for item in cart)
-    return render_template("cart.html", cart=cart, total=total)
+@app.route('/admin')
+def admin():
+    if "user" in session and session["user"] == ADMIN_EMAIL:
+        return render_template("admin.html")
+    return "Access denied"
 
-@app.route('/pay', methods=['POST'])
+@app.route('/pay', methods=["POST"])
 def pay():
-    cart = session.get('cart', [])
-    amount = sum(item['price'] for item in cart) * 100  # Paise
+    amount = int(request.form["amount"]) * 100
     order = razorpay_client.order.create(dict(amount=amount, currency="INR", payment_capture="1"))
-    return render_template("payment.html", order=order, cart=cart)
+    return render_template("payment.html", order=order)
 
-@app.route('/order_confirmation')
-def order_confirmation():
-    # clear cart after order
-    session['cart'] = []
-    return render_template("order_confirmation.html")
-
+# ---------------- RUN ----------------
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))  # Render sets PORT automatically
+    app.run(host="0.0.0.0", port=port, debug=True)
+
